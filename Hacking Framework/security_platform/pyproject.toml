@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "security-platform"
+version = "1.0.0"
+description = "Modular cybersecurity research and security automation platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Security Research Team" }]
+keywords = ["security", "penetration-testing", "vulnerability-scanning", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+security = "cli.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "api*", "cli*", "config*", "core*", "dashboard*",
+    "database*", "intelligence*", "modules*", "reports*", "workers*",
+]
+
+# ── Pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# ── Ruff linting ──────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = [
+    "S101",   # assert statements are fine in tests
+    "S105",   # possible hardcoded password — we use env vars
+    "B008",   # FastAPI Depends() in default args is intentional
+]
+
+# ── Mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true

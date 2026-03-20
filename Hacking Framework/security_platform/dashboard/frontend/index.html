@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Platform — Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a202c; --border: #2d3748;
+      --text: #e2e8f0; --muted: #718096; --accent: #63b3ed;
+      --critical: #fc8181; --high: #fbd38d; --medium: #f6e05e;
+      --low: #9ae6b4; --info: #a0aec0;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh; }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    nav { background: var(--surface); border-right: 1px solid var(--border); padding: 1.5rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    nav h1 { font-size: 1rem; color: var(--accent); margin-bottom: 1rem; letter-spacing: 0.05em; text-transform: uppercase; }
+    nav a { display: block; padding: 0.5rem 0.75rem; border-radius: 4px; color: var(--muted); font-size: 0.9rem; }
+    nav a:hover, nav a.active { background: var(--border); color: var(--text); }
+    main { padding: 2rem; overflow-y: auto; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    header h2 { font-size: 1.4rem; color: var(--accent); }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+    .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+    .stat-value { font-size: 2rem; font-weight: bold; color: var(--accent); }
+    .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-top: 0.25rem; }
+
+    /* ── Grid ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } nav { display: none; } }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { color: var(--accent); text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); font-weight: 600; }
+    td { padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:hover { background: rgba(255,255,255,0.03); }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: bold; }
+    .badge-critical { background: #742a2a; color: var(--critical); }
+    .badge-high     { background: #7b341e; color: var(--high); }
+    .badge-medium   { background: #5f370e; color: var(--medium); }
+    .badge-low      { background: #22543d; color: var(--low); }
+    .badge-info     { background: #1a365d; color: var(--info); }
+    .badge-completed { background: #22543d; color: var(--low); }
+    .badge-running   { background: #1a365d; color: var(--accent); }
+    .badge-pending   { background: #2d3748; color: var(--muted); }
+    .badge-failed    { background: #742a2a; color: var(--critical); }
+
+    /* ── Risk score pill ── */
+    .risk-pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.82rem; font-weight: bold; }
+
+    /* ── Auth overlay ── */
+    #auth-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .auth-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 2rem; width: 340px; }
+    .auth-box h2 { color: var(--accent); margin-bottom: 1.25rem; }
+    .auth-box input { width: 100%; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); margin-bottom: 0.75rem; font-size: 0.9rem; }
+    .auth-box button { width: 100%; padding: 0.65rem; background: #2b6cb0; border: none; border-radius: 4px; color: #fff; font-size: 0.95rem; cursor: pointer; }
+    .auth-box button:hover { background: #2c5282; }
+    .auth-error { color: var(--critical); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* ── Misc ── */
+    .section-title { font-size: 1rem; color: var(--accent); margin-bottom: 0.75rem; font-weight: 600; }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 0.4rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    canvas { max-height: 260px; }
+  </style>
+</head>
+<body>
+
+<!-- Auth overlay -->
+<div id="auth-overlay">
+  <div class="auth-box">
+    <h2>Security Platform</h2>
+    <input type="text" id="auth-username" placeholder="Username" autocomplete="username">
+    <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
+    <button onclick="doLogin()">Sign in</button>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav>
+    <h1>&#x1F6E1; SecPlatform</h1>
+    <a href="#" class="active" onclick="showView('overview',this)">Overview</a>
+    <a href="#" onclick="showView('targets',this)">Targets</a>
+    <a href="#" onclick="showView('scans',this)">Recent Scans</a>
+    <a href="#" onclick="showView('vulns',this)">Vulnerabilities</a>
+    <hr style="border-color:var(--border);margin:0.5rem 0;">
+    <a href="/docs" target="_blank">API Docs</a>
+    <a href="#" onclick="logout()" style="margin-top:auto;color:var(--critical);">Sign out</a>
+  </nav>
+
+  <main>
+    <header>
+      <h2 id="view-title">Overview</h2>
+      <button onclick="refreshAll()" style="background:var(--surface);border:1px solid var(--border);color:var(--accent);padding:0.4rem 1rem;border-radius:4px;cursor:pointer;">
+        &#x21bb; Refresh
+      </button>
+    </header>
+
+    <!-- Overview -->
+    <div id="view-overview">
+      <div class="grid-stats" id="stat-cards">
+        <div class="stat-card"><div class="spinner"></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="section-title">Severity Distribution</div>
+          <canvas id="chart-vuln-dist"></canvas>
+        </div>
+        <div class="card">
+          <div class="section-title">Recent Scans — Risk Scores</div>
+          <canvas id="chart-risk-trend"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Targets -->
+    <div id="view-targets" style="display:none">
+      <div class="card">
+        <div class="section-title">All Targets</div>
+        <table>
+          <thead><tr><th>Target</th><th>Type</th><th>Status</th><th>Risk Score</th><th>Last Scanned</th></tr></thead>
+          <tbody id="targets-body"><tr><td colspan="5" class="empty"><span class="spinner"></span> Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recent Scans -->
+    <div id="view-scans" style="display:none">
+      <div class="card">
+        <div class="section-title">Recent Scans</div>
+        <table>
+          <thead><tr><th>Scan ID</th><th>Target ID</th><th>Status</th><th>Risk Score</th><th>Completed</th></tr></thead>
+          <tbody id="scans-body"><tr><td colspan="5" class="empty"><span class="spinner"></span> Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Vulns placeholder -->
+    <div id="view-vulns" style="display:none">
+      <div class="card">
+        <div class="section-title">Vulnerability Distribution</div>
+        <canvas id="chart-vuln-dist-2" style="max-height:320px"></canvas>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+"use strict";
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const API_BASE = "/api/v1";   // same origin
+let _token = localStorage.getItem("sp_token") || "";
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const u = document.getElementById("auth-username").value.trim();
+  const p = document.getElementById("auth-password").value;
+  const err = document.getElementById("auth-error");
+  err.textContent = "";
+  try {
+    const res = await fetch(`${API_BASE}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`,
+    });
+    if (!res.ok) { err.textContent = "Invalid credentials."; return; }
+    const data = await res.json();
+    _token = data.access_token;
+    localStorage.setItem("sp_token", _token);
+    document.getElementById("auth-overlay").style.display = "none";
+    refreshAll();
+  } catch(e) { err.textContent = "Server unreachable."; }
+}
+
+function logout() {
+  _token = "";
+  localStorage.removeItem("sp_token");
+  location.reload();
+}
+
+async function api(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Authorization": `Bearer ${_token}` },
+  });
+  if (res.status === 401) { logout(); throw new Error("Unauthenticated"); }
+  return res.json();
+}
+
+// ── View switching ────────────────────────────────────────────────────────────
+const VIEWS = { overview: "Overview", targets: "Targets", scans: "Recent Scans", vulns: "Vulnerabilities" };
+function showView(name, el) {
+  Object.keys(VIEWS).forEach(v => {
+    document.getElementById(`view-${v}`).style.display = v === name ? "" : "none";
+  });
+  document.querySelectorAll("nav a").forEach(a => a.classList.remove("active"));
+  if (el) el.classList.add("active");
+  document.getElementById("view-title").textContent = VIEWS[name] || name;
+}
+
+// ── Stats cards ───────────────────────────────────────────────────────────────
+async function loadStats() {
+  const d = await api("/dashboard/stats");
+  const container = document.getElementById("stat-cards");
+  const riskColor = d.average_risk_score >= 7 ? "var(--critical)" : d.average_risk_score >= 4 ? "var(--medium)" : "var(--low)";
+  container.innerHTML = `
+    ${statCard(d.total_targets, "Targets")}
+    ${statCard(d.total_scans, "Total Scans")}
+    ${statCard(d.completed_scans, "Completed")}
+    ${statCard(d.total_vulnerabilities, "Vulnerabilities")}
+    ${statCard(d.critical_vulnerabilities, "Critical", "var(--critical)")}
+    ${statCard(d.high_vulnerabilities, "High", "var(--high)")}
+    ${statCard(d.average_risk_score != null ? d.average_risk_score.toFixed(1) : "—", "Avg Risk", riskColor)}
+  `;
+}
+
+function statCard(val, label, color) {
+  return `<div class="stat-card">
+    <div class="stat-value" style="${color ? `color:${color}` : ""}">${val}</div>
+    <div class="stat-label">${label}</div>
+  </div>`;
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+let chartVD, chartRT, chartVD2;
+
+async function loadVulnDist() {
+  const d = await api("/dashboard/risk-distribution");
+  const labels = Object.keys(d).map(k => k.charAt(0).toUpperCase() + k.slice(1));
+  const values = Object.values(d);
+  const colors = ["#742a2a","#7b341e","#5f370e","#22543d","#2d3748"];
+
+  const build = (id, existing) => {
+    const ctx = document.getElementById(id).getContext("2d");
+    if (existing) existing.destroy();
+    return new Chart(ctx, {
+      type: "doughnut",
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+      options: {
+        plugins: { legend: { labels: { color: "#e2e8f0", font: { size: 12 } } } },
+        cutout: "65%",
+      },
+    });
+  };
+
+  chartVD = build("chart-vuln-dist", chartVD);
+  chartVD2 = build("chart-vuln-dist-2", chartVD2);
+}
+
+async function loadRiskTrend() {
+  const rows = await api("/dashboard/recent-scans?limit=10");
+  const labels = rows.map((r,i) => `#${i+1}`);
+  const values = rows.map(r => r.risk_score);
+  const ctx = document.getElementById("chart-risk-trend").getContext("2d");
+  if (chartRT) chartRT.destroy();
+  chartRT = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Risk Score",
+        data: values,
+        borderColor: "#63b3ed",
+        backgroundColor: "rgba(99,179,237,0.15)",
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+      }],
+    },
+    options: {
+      scales: {
+        y: { min: 0, max: 10, grid: { color: "#2d3748" }, ticks: { color: "#718096" } },
+        x: { grid: { color: "#2d3748" }, ticks: { color: "#718096" } },
+      },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+// ── Targets table ─────────────────────────────────────────────────────────────
+async function loadTargets() {
+  const rows = await api("/dashboard/targets-overview");
+  const tbody = document.getElementById("targets-body");
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty">No targets found.</td></tr>`; return; }
+  tbody.innerHTML = rows.map(t => {
+    const rs = t.latest_risk_score != null ? riskPill(t.latest_risk_score) : '<span style="color:var(--muted)">—</span>';
+    const ls = t.last_scanned ? t.last_scanned.replace("T"," ").slice(0,16) + " UTC" : "Never";
+    return `<tr><td>${escHtml(t.value)}</td><td>${escHtml(t.type)}</td><td><span class="badge badge-${t.status.toLowerCase()}">${t.status}</span></td><td>${rs}</td><td style="color:var(--muted)">${ls}</td></tr>`;
+  }).join("");
+}
+
+// ── Scans table ───────────────────────────────────────────────────────────────
+async function loadScans() {
+  const rows = await api("/dashboard/recent-scans?limit=20");
+  const tbody = document.getElementById("scans-body");
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty">No scans found.</td></tr>`; return; }
+  tbody.innerHTML = rows.map(r => {
+    const rs = r.risk_score != null ? riskPill(r.risk_score) : '<span style="color:var(--muted)">—</span>';
+    const comp = r.completed_at ? r.completed_at.replace("T"," ").slice(0,16) + " UTC" : "—";
+    return `<tr><td style="font-family:monospace;font-size:0.8rem">${r.id.slice(0,8)}</td><td style="font-family:monospace;font-size:0.8rem">${r.target_id.slice(0,8)}</td><td><span class="badge badge-${r.status.toLowerCase()}">${r.status}</span></td><td>${rs}</td><td style="color:var(--muted)">${comp}</td></tr>`;
+  }).join("");
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function riskPill(score) {
+  let cls = score >= 9 ? "critical" : score >= 7 ? "high" : score >= 4 ? "medium" : "low";
+  const colors = { critical: ["#742a2a","#fc8181"], high: ["#7b341e","#fbd38d"], medium: ["#5f370e","#f6e05e"], low: ["#22543d","#9ae6b4"] };
+  const [bg, fg] = colors[cls];
+  return `<span class="risk-pill" style="background:${bg};color:${fg}">${score.toFixed(1)}</span>`;
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadStats(), loadVulnDist(), loadRiskTrend(), loadTargets(), loadScans()]);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  if (_token) {
+    document.getElementById("auth-overlay").style.display = "none";
+    refreshAll();
+  }
+  // allow Enter key on password field
+  document.getElementById("auth-password").addEventListener("keyup", e => { if (e.key === "Enter") doLogin(); });
+});
+</script>
+</body>
+</html>
